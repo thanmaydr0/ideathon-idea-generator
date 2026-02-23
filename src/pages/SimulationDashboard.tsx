@@ -18,6 +18,8 @@ import { CurrentIdeaPanel } from "@/components/dashboard/CurrentIdeaPanel";
 import { IterationHistoryTable } from "@/components/dashboard/IterationHistoryTable";
 import { PersonaCardGrid } from "@/components/agents/PersonaCardGrid";
 import { JudgeScorePanel } from "@/components/agents/JudgeScorePanel";
+import { DemoModeToggle } from "@/components/dashboard/DemoModeToggle";
+import { useDemoPlayer } from "@/demo/demoPlayer";
 
 // ────────────────────────────────────────────────────────────────────────────────
 // Domain Options
@@ -40,7 +42,7 @@ const DOMAINS = [
 // Dashboard State
 // ────────────────────────────────────────────────────────────────────────────────
 
-interface DashboardState {
+export interface DashboardState {
     status: SimulationStatus;
     iteration: number;
     maxIterations: number;
@@ -58,7 +60,7 @@ interface DashboardState {
     events: OrchestratorEvent[];
 }
 
-const INITIAL_STATE: DashboardState = {
+export const INITIAL_STATE: DashboardState = {
     status: "PENDING",
     iteration: 0,
     maxIterations: 1000,
@@ -100,6 +102,11 @@ export default function SimulationDashboard() {
     const [state, setState] = useState<DashboardState>(INITIAL_STATE);
     const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const startTimeRef = useRef<number>(0);
+
+    const demo = useDemoPlayer();
+
+    // Switch between real state and demo state based on playback
+    const activeState = demo.isPlaying ? demo.demoState : state;
 
     // ── Elapsed time ticker ────────────────────────────────────────
     useEffect(() => {
@@ -221,7 +228,7 @@ export default function SimulationDashboard() {
         setState((prev) => ({ ...prev, status: "CANCELLED" }));
     }, []);
 
-    const isRunning = state.status === "RUNNING";
+    const isRunning = activeState.status === "RUNNING";
 
     return (
         <div className="min-h-screen bg-background text-foreground dark">
@@ -231,6 +238,14 @@ export default function SimulationDashboard() {
                     <h1 className="text-lg font-bold tracking-tight whitespace-nowrap">
                         <span className="text-blue-400">🔥</span> IDEAForge
                     </h1>
+
+                    <DemoModeToggle
+                        isPlaying={demo.isPlaying}
+                        speed={demo.speed}
+                        onToggle={demo.togglePlay}
+                        onSpeedChange={demo.setSpeed}
+                        onStart={demo.startDemo}
+                    />
 
                     <input
                         type="text"
@@ -276,62 +291,81 @@ export default function SimulationDashboard() {
             {/* ── Dashboard Content ───────────────────────────────────────── */}
             <main className="max-w-[1920px] mx-auto px-4 py-4 space-y-4">
                 {/* Row 1: Session Info | Convergence Radar | Score Timeline */}
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 relative">
+                    {/* Demo Alert Overlay */}
+                    {demo.activeEvent && (
+                        <div className="absolute -top-4 right-0 z-50 animate-in slide-in-from-top-2 fade-in duration-300">
+                            <div className={`p-4 rounded-xl border shadow-2xl backdrop-blur-md space-y-1 w-80 
+                                ${demo.activeEvent.type === 'warning' ? 'border-red-500/50 bg-red-500/10 shadow-red-500/5' :
+                                    demo.activeEvent.type === 'success' ? 'border-emerald-500/50 bg-emerald-500/10 shadow-emerald-500/5' :
+                                        'border-blue-500/50 bg-blue-500/10 shadow-blue-500/5'}`}
+                            >
+                                <div className="flex items-center gap-2">
+                                    <span className="text-lg">
+                                        {demo.activeEvent.type === 'warning' ? '⚠️' : demo.activeEvent.type === 'success' ? '✅' : 'ℹ️'}
+                                    </span>
+                                    <h3 className="font-bold text-sm uppercase tracking-wider">{demo.activeEvent.title}</h3>
+                                </div>
+                                <p className="text-xs text-foreground/80 leading-relaxed pl-7">{demo.activeEvent.description}</p>
+                            </div>
+                        </div>
+                    )}
+
                     <div className="lg:col-span-3">
                         <SessionInfoCard
-                            iteration={state.iteration}
-                            status={state.status}
-                            elapsedMs={state.elapsedMs}
-                            estimatedCostUsd={state.estimatedCostUsd}
-                            totalTokens={state.totalTokens}
-                            bestScore={state.bestScore}
-                            maxIterations={state.maxIterations}
+                            iteration={activeState.iteration}
+                            status={activeState.status}
+                            elapsedMs={demo.isPlaying ? demo.demoState.elapsedMs : state.elapsedMs}
+                            estimatedCostUsd={activeState.estimatedCostUsd}
+                            totalTokens={activeState.totalTokens}
+                            bestScore={activeState.bestScore}
+                            maxIterations={activeState.maxIterations}
                         />
                     </div>
                     <div className="lg:col-span-4">
                         <ConvergenceRadar
-                            currentScores={state.judgeScores}
+                            currentScores={activeState.judgeScores}
                             previousScores={
-                                state.previousJudgeScores.length > 0
-                                    ? state.previousJudgeScores
+                                activeState.previousJudgeScores.length > 0
+                                    ? activeState.previousJudgeScores
                                     : undefined
                             }
                         />
                     </div>
                     <div className="lg:col-span-5">
-                        <ScoreTimeline logs={state.iterationLogs} />
+                        <ScoreTimeline logs={activeState.iterationLogs} />
                     </div>
                 </div>
 
                 {/* Row 2: Current Best Idea */}
                 <CurrentIdeaPanel
-                    currentIdea={state.currentIdea}
-                    previousIdea={state.previousIdea}
+                    currentIdea={activeState.currentIdea}
+                    previousIdea={activeState.previousIdea}
                 />
 
                 {/* Row 3: Persona Cards | Judge Scores */}
                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                     <PersonaCardGrid
-                        critiques={state.personaCritiques}
-                        isLoading={state.isProcessing}
+                        critiques={activeState.personaCritiques}
+                        isLoading={activeState.isProcessing}
                     />
                     <JudgeScorePanel
-                        scores={state.judgeScores}
-                        isLoading={state.isProcessing}
+                        scores={activeState.judgeScores}
+                        isLoading={activeState.isProcessing}
                     />
                 </div>
 
                 {/* Row 4: Iteration History */}
-                <IterationHistoryTable logs={state.iterationLogs} />
+                <IterationHistoryTable logs={activeState.iterationLogs} />
 
                 {/* Event Log (collapsible footer) */}
-                {state.events.length > 0 && (
+                {activeState.events.length > 0 && (
                     <details className="rounded-xl border border-border bg-card">
                         <summary className="px-4 py-3 text-sm font-medium text-muted-foreground cursor-pointer hover:text-foreground transition-colors">
-                            Event Log ({state.events.length})
+                            Event Log ({activeState.events.length})
                         </summary>
                         <div className="px-4 pb-3 max-h-48 overflow-auto">
-                            {state.events
+                            {activeState.events
                                 .slice()
                                 .reverse()
                                 .map((evt, i) => (
