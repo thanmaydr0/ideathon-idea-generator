@@ -114,7 +114,8 @@ export const JudgeScoreSchema = z.object({
     userImpact: z.number().min(0).max(10),
     presentation: z.number().min(0).max(10),
     overallScore: z.number().min(0).max(10),
-    critiques: z.array(z.string()),
+    specificCritiques: z.array(z.string()),
+    improvementDirectives: z.array(z.string()),
     passThreshold: z.boolean(),
 });
 
